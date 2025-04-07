@@ -1,1 +1,1 @@
-# 2-team-teamname-be
+# 2-hertz-be

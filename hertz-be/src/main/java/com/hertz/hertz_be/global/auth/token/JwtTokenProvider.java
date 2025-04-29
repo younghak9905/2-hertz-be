@@ -16,7 +16,7 @@ public class JwtTokenProvider {
 
     public JwtTokenProvider() {
         this.key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    }
+    } // TODO: 추후에 비밀키로 관리할 것
 
     public String createAccessToken(Long userId) {
         Date now = new Date();
@@ -52,5 +52,17 @@ public class JwtTokenProvider {
                 .build()
                 .parseClaimsJws(token)
                 .getBody(); // Claims(payload 부분)만 반환
+    }
+
+    public String createRefreshToken(Long userId) {
+        Date now = new Date();
+        Date expiryDate = Date.from(Instant.now().plus(14, ChronoUnit.DAYS));
+
+        return Jwts.builder()
+                .setSubject(userId.toString())
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
     }
 }

@@ -2,7 +2,7 @@ package com.hertz.hertz_be.domain.user.entity;
 
 import com.hertz.hertz_be.domain.user.entity.enums.AgeGroup;
 import com.hertz.hertz_be.domain.user.entity.enums.Gender;
-import com.hertz.hertz_be.domain.user.entity.enums.Status;
+import com.hertz.hertz_be.domain.user.entity.enums.MembershipType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -44,8 +44,8 @@ public class User {
     private String oneLineIntroduction;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status_code", nullable = false, length = 25)
-    private Status statusCode;
+    @Column(name = "membership_type", nullable = false, length = 25)
+    private MembershipType membershipType;
 
     @Column(name = "is_friend_allowed", nullable = false)
     private Boolean isFriendAllowed;

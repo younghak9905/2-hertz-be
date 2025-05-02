@@ -63,7 +63,6 @@ public class KakaoOAuthClient {
         // 필요한 정보 추출
         Map<String, Object> result = new HashMap<>();
         result.put("id", userData.get("id")); // 카카오 ID(고유한값)
-        result.put("access_token", accessToken);
         result.put("refresh_token", refreshToken);
         result.put("refresh_token_expires_in", refreshTokenExpiresIn);
 

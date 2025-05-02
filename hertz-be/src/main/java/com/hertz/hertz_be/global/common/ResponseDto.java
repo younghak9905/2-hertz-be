@@ -14,11 +14,4 @@ public class ResponseDto<T> {
         this.data = data;
     }
 
-    public String getCode() {
-        return this.code;
-    }
-
-    public T getData() {
-        return this.data;
-    }
 }

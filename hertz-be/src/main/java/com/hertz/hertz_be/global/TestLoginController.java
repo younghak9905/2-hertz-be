@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api")
 public class TestLoginController {
 
     private final JwtTokenProvider jwtTokenProvider;
@@ -44,5 +44,10 @@ public class TestLoginController {
         // Access Token은 JSON body로 반환
         return ResponseEntity.ok()
                 .body(Map.of("accessToken", accessToken));
+    }
+
+    @GetMapping("/ping")
+    public ResponseEntity<String> ping() {
+        return ResponseEntity.ok("pong");
     }
 }

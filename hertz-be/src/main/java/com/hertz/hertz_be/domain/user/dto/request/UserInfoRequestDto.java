@@ -26,6 +26,9 @@ public class UserInfoRequestDto {
     private String profileImage;
 
     @NotBlank
+    private String email;
+
+    @NotBlank
     private String nickname;
 
     @NotNull
@@ -36,4 +39,6 @@ public class UserInfoRequestDto {
 
     @NotBlank
     private String oneLineIntroduction;
+
+
 }

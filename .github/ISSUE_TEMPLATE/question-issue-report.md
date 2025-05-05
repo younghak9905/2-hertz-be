@@ -3,7 +3,7 @@ name: Question Issue Report
 about: 질문 사항이 생겼을 때 작성하는 템플릿입니다.
 title: "[QUESTION]"
 labels: "❓ question"
-assignees: ''
+assignees: kanado5385-k, zzeon9
 
 ---
 

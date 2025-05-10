@@ -48,7 +48,7 @@ public class JwtTokenProvider {
             parseClaims(token);
             return true;
         } catch (ExpiredJwtException e) { // 토큰 만료
-            return false;
+            throw e;
         } catch (JwtException | IllegalArgumentException e) { // 토큰 손상/변조
             return false;
         }
@@ -58,7 +58,7 @@ public class JwtTokenProvider {
         return Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
-                .parseClaimsJws(token)
+                .parseClaimsJws(token)// 만료 여부 검증 포함
                 .getBody(); // Claims(payload 부분)만 반환
     }
 

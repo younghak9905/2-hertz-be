@@ -42,7 +42,7 @@ public class UserController {
         responseCookie = ResponseCookie.from("refreshToken", userInfoResponseDto.getRefreshToken())
                 .maxAge(userInfoResponseDto.getRefreshSecondsUntilExpiry())
                 .path("/")
-                .domain(".hertz-tuning.com")
+                .domain(isLocal ? null : ".hertz-tuning.com")
                 .httpOnly(true)
                 .sameSite("None")
                 .secure(!isLocal)   // isLocal=false면 secure 활성화

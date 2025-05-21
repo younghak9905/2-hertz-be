@@ -80,6 +80,8 @@ public class InterestsService {
         log.debug("🔄 [saveUserInterests] 캐싱 튜닝 결과 초기화");
         resetCachingTuningResult(user);
 
+        resetCachingTuningResult(user);
+
         requestAiBody.put("userId", user.getId());
         requestAiBody.put("emailDomain", extractDomainFromEmail(user.getEmail()));
         requestAiBody.put("gender", user.getGender());
@@ -95,6 +97,7 @@ public class InterestsService {
 
             interestsMap.forEach((categoryName, itemNames) -> {
                 log.debug("📌 [saveUserInterests] 관심사 저장 시작 - 카테고리: {}, 아이템 수: {}", categoryName, itemNames.size());
+
                 if (itemNames == null) {
                     throw new UserException("관심사 항목에 null 값이 있습니다", ResponseCode.BAD_REQUEST);
                 }

@@ -76,7 +76,7 @@ public class InterestsService {
                     return new UserException("사용자를 찾을 수 없습니다.", ResponseCode.BAD_REQUEST);
                 });
         log.debug("✅ [saveUserInterests] 유저 조회 완료 - email: {}", user.getEmail());
-
+      
         resetCachingTuningResult(user);
         log.debug("🔄 [saveUserInterests] 캐싱 튜닝 결과 초기화");
 
@@ -91,6 +91,7 @@ public class InterestsService {
             log.error("❌ [saveUserInterests] 취향 저장 중 예외 발생", e);
             throw new UserException("취향 등록 처리에 문제가 발생했습니다.", ResponseCode.BAD_REQUEST);
         }
+
 
         // 트랜잭션 커밋 이후 실행
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -146,6 +147,7 @@ public class InterestsService {
     }
 
     private void saveSingleUserInterest(User user, InterestsCategoryType categoryType, String categoryName, String itemName) {
+
         try {
             log.debug("🔎 [saveSingleUserInterest] 저장 시도 - userId: {}, type: {}, category: {}, item: {}", user.getId(), categoryType, categoryName, itemName);
             InterestsCategory category = interestsCategoryRepository.findByCategoryTypeAndName(categoryType, categoryName)

@@ -245,7 +245,7 @@ public class InterestsService {
                 ObjectMapper mapper = new ObjectMapper();
                 JsonNode json = mapper.readTree(body);
                 String code = json.has("code") ? json.get("code").asText() : null;
-
+              
                 return switch (code) {
                     case ResponseCode.EMBEDDING_CONFLICT_DUPLICATE_ID -> {
                         log.warn("⚠️ 이미 등록된 유저. userId: {}", userId);

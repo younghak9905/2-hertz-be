@@ -5,6 +5,10 @@ import com.hertz.hertz_be.domain.channel.entity.SignalMessage;
 import com.hertz.hertz_be.domain.channel.entity.SignalRoom;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
 import com.hertz.hertz_be.domain.channel.repository.SignalMessageRepository;
+import com.hertz.hertz_be.global.exception.InternalServerErrorException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -22,8 +26,10 @@ import java.util.stream.Collectors;
 public class AsyncChannelService {
     @Value("${matching.convert.delay-minutes}")
     private long matchingConvertDelayMinutes;
-
     private final long ONE_MESSAGE = 1L;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private final SignalMessageRepository signalMessageRepository;
     private final SseChannelService sseChannelService;
@@ -80,5 +86,30 @@ public class AsyncChannelService {
             log.info("[조건 충족] receiverUser의 첫 메시지로부터 {}분 경과: roomId={}", matchingConvertDelayMinutes, roomId);
             sseChannelService.notifyMatchingConvertedInChannelRoom(room, userId);
         }
+    }
+
+    @Async
+    @Transactional
+    public void sendNewMessageNotifyToPartner(SignalMessage signalMessage, Long partnerId, boolean isSignal) {
+        // signalMessage는 detached 상태 → DB에서 최신 상태 조회
+        SignalMessage latestMessageForm = signalMessageRepository.findById(signalMessage.getId())
+                .orElseThrow(InternalServerErrorException::new);
+
+        if (!latestMessageForm.getIsRead()) {
+            sseChannelService.updatePartnerChannelList(latestMessageForm, partnerId);
+            if (isSignal) {
+                sseChannelService.notifyNewSignal(latestMessageForm, partnerId);
+            } else {
+                sseChannelService.notifyNewMessage(latestMessageForm, partnerId);
+            }
+        }
+
+        sseChannelService.updatePartnerNavbar(partnerId);
+    }
+
+    @Async
+    @Transactional
+    public void updateNavbarMessageNotification(Long userId) {
+        sseChannelService.updatePartnerNavbar(userId);
     }
 }

@@ -1,0 +1,119 @@
+name: Backend Docker CI
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      # - main
+      - develop
+
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "배포 환경 선택"
+        required: true
+        default: "DEV"
+        type: choice
+        options:
+          - DEV
+          - PROD
+
+jobs:
+  backend-ci:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    outputs:
+      BRANCH: ${{ steps.generate-tags.outputs.BRANCH }}
+      SHORT_SHA: ${{ steps.generate-tags.outputs.SHORT_SHA }}
+      FULL_IMAGE: ${{ env.FULL_IMAGE }}
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 소스 코드 Checkout
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      # 2. AWS 인증
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 3. ECR 로그인
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      # 4. 태그 정보 생성
+      - name: Generate image tags
+        id: generate-tags
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          SANITIZED_BRANCH="${BRANCH//\//-}"
+          SANITIZED_BRANCH=$(echo "$SANITIZED_BRANCH" | sed 's#[^a-zA-Z0-9_.-]#-#g')
+          BRANCH="$SANITIZED_BRANCH"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_TAG="${BRANCH}-${SHORT_SHA}"
+
+          if [ "$BRANCH" = "main" ]; then
+            ENV_TAG="main-latest"
+          else
+            ENV_TAG="develop-latest"
+          fi
+
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "ENV_TAG=$ENV_TAG" >> $GITHUB_ENV
+          echo "BRANCH=$BRANCH" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Mask sensitive variables
+        run: |
+          echo "::add-mask::${{ env.IMAGE_TAG }}"
+          echo "::add-mask::${{ env.ENV_TAG }}"
+          echo "::add-mask::${{ env.FULL_IMAGE }}"
+
+      # 5. Docker 빌드 및 푸시
+      - name: Build and push Docker image
+        run: |
+          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY=tuning-springboot
+
+          echo "🏗️ Docker 이미지 빌드 시작..."
+
+          docker build \
+            --cache-from=type=registry,ref=$ECR_REGISTRY/$REPOSITORY:$ENV_TAG \
+            --cache-to=type=inline \
+            -f hertz-be/Dockerfile \
+            -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG \
+            hertz-be/
+          docker tag $ECR_REGISTRY/$REPOSITORY:${{ env.IMAGE_TAG }} $ECR_REGISTRY/$REPOSITORY:${{ env.ENV_TAG }}
+
+          echo "📤 Docker 이미지 푸시 중..."
+          docker push $ECR_REGISTRY/$REPOSITORY:${{ env.IMAGE_TAG }}
+          docker push $ECR_REGISTRY/$REPOSITORY:${{ env.ENV_TAG }}
+
+          echo "FULL_IMAGE=$ECR_REGISTRY/$REPOSITORY:${{ env.IMAGE_TAG }}" >> $GITHUB_ENV
+          echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
+
+      # 6. 성공 알림
+      - name: Notify Discord on Success
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\": \"✅ [백엔드 CI 성공] **${{ env.BRANCH }}** 브랜치\\n> 태그: ${{ env.IMAGE_TAG }}\\n> Commit: ${{ env.SHORT_SHA }}\\n> 이미지: ${{ env.FULL_IMAGE }}\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_CICD_URL }}
+
+      # 7. 실패 알림
+      - name: Notify Discord on Failure
+        if: failure()
+        run: |
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\": \"❌ [백엔드 CI 실패] **${{ env.BRANCH }}** 브랜치\\n> Commit: ${{ env.SHORT_SHA }}\\n⚠️ [워크플로우 로그 보기]($WORKFLOW_URL)\"}" \
+              ${{ secrets.DISCORD_WEBHOOK_CICD_URL }}

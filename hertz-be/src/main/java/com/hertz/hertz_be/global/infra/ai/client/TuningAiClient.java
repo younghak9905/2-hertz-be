@@ -1,5 +1,7 @@
 package com.hertz.hertz_be.global.infra.ai.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hertz.hertz_be.global.exception.AiServerBadRequestException;
 import com.hertz.hertz_be.global.infra.ai.dto.AiTuningReportGenerationRequest;
 import lombok.RequiredArgsConstructor;
@@ -17,29 +19,27 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TuningAiClient {
 
-    @Value("${ai.server.ip}")
-    private String AI_SERVER_URL;
+    @Value("${ai.tuningreport.ip}")
+    private String AI_TUNING_REPORT_IP;
     private static WebClient webClient;
 
-    @Autowired
-    public TuningAiClient(RestTemplate restTemplate) {
-        this.webClient = WebClient.builder().baseUrl(AI_SERVER_URL).build();
+    public TuningAiClient(@Value("${ai.tuningreport.ip}") String aiTuningReportIp) {
+        this.webClient = WebClient.builder().baseUrl(aiTuningReportIp).build();
     }
 
+    public Map<String, Object> requestTuningReport(AiTuningReportGenerationRequest aiReportRequest) {
+        String uri = AI_TUNING_REPORT_IP + "api/v2/report";
 
-    public Map<String, Object> requestTuningReport(AiTuningReportGenerationRequest request) {
-        String uri = AI_SERVER_URL + "api/v2/report";
         try{
             return webClient.post()
                     .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(request)
+                    .bodyValue(aiReportRequest)
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                     .block();
         } catch (Exception e) {
             throw new AiServerBadRequestException();
         }
-
     }
 }

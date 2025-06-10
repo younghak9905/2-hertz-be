@@ -45,6 +45,8 @@ public class ResponseCode {
     public static final String ALREADY_IN_CONVERSATION = "ALREADY_IN_CONVERSATION";
     public static final String NEW_MESSAGE = "NEW_MESSAGE";
     public static final String NO_ANY_NEW_MESSAGE = "NO_ANY_NEW_MESSAGE";
+    public static final String CHANNEL_ROOM_EXIT_SUCCESS = "CHANNEL_ROOM_EXIT_SUCCESS";
+    public static final String ALREADY_EXITED_CHANNEL_ROOM = "ALREADY_EXITED_CHANNEL_ROOM";
 
     // 튜닝 추천 상대 반환 로직 관련 응답 code
     public static final String USER_INTERESTS_NOT_SELECTED = "USER_INTERESTS_NOT_SELECTED";
@@ -75,7 +77,9 @@ public class ResponseCode {
      * 알림창 관련 응답 code
      */
     public static final String NOTICE_CREATED_SUCCESS = "NOTICE_CREATED_SUCCESS";
-
+    public static final String ALARM_FETCH_SUCCESS = "ALARM_FETCH_SUCCESS";
+    public static final String NO_ALARMS = "NO_ALARMS";
+    public static final String ALARM_DELETE_SUCCESS = "ALARM_DELETE_SUCCESS";
     /**
      * 매칭 수락/거절 관련 응답 code
      */
@@ -87,6 +91,11 @@ public class ResponseCode {
 
     public static final String TUNING_NOT_FOUND_DATA = "TUNING_NOT_FOUND_DATA";
     public static final String TUNING_NOT_FOUND_LIST = "TUNING_NOT_FOUND_LIST";
+
+
+    /* 마이페이지, 상대방 상세 페이지 조회 */
+    public static final String USER_INFO_FETCH_SUCCESS = "USER_INFO_FETCH_SUCCESS";
+    public static final String OTHER_USER_INFO_FETCH_SUCCESS = "OTHER_USER_INFO_FETCH_SUCCESS";
 
     /**
      * User 삭제 관련 응답 code

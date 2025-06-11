@@ -21,13 +21,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration
 @RequiredArgsConstructor
 @EnableBatchProcessing
-public class TuningReportBatchConfig {
+public class TuningReportGenerationJobConfig {
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
-    private final TuningReportReader tuningReportReader;
-    private final TuningReportWriter tuningReportWriter;
-    private final TuningReportProcessor tuningReportProcessor;
+    private final TuningReportGenerationReader tuningReportReader;
+    private final TuningReportGenerationWriter tuningReportWriter;
+    private final TuningReportGenerationProcessor tuningReportProcessor;
 
     private static final int CHUNK_SIZE = 20;
 

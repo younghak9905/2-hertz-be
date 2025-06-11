@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class TuningReportWriter implements ItemWriter<TuningReport> {
+public class TuningReportGenerationWriter implements ItemWriter<TuningReport> {
 
     private final TuningReportRepository tuningReportRepository;
 

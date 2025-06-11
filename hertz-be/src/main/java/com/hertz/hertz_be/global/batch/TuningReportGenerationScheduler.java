@@ -12,7 +12,7 @@ import java.time.LocalDate;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class TuningReportScheduler {
+public class TuningReportGenerationScheduler {
 
     private final Job tuningReportJob;
     private final JobLauncher jobLauncher;

@@ -17,7 +17,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
-public class TuningReportProcessor implements ItemProcessor<SignalRoom, TuningReport> {
+public class TuningReportGenerationProcessor implements ItemProcessor<SignalRoom, TuningReport> {
 
     private final TuningReportRepository tuningReportRepository;
     private final TuningAiClient tuningAiClient;
@@ -28,7 +28,7 @@ public class TuningReportProcessor implements ItemProcessor<SignalRoom, TuningRe
     @Override
     public TuningReport process(SignalRoom signalRoom) {
         // 이미 튜닝 리포트가 존재하면 skip
-        Optional<TuningReport> existing = tuningReportRepository.findBySignalRoom(signalRoom);
+        Optional<TuningReport> existing = tuningReportRepository.findNotDeletedBySignalRoom(signalRoom);
         if (existing.isPresent()) return null;
 
         int chatCounts = signalMessageRepository.countBySignalRoom(signalRoom);

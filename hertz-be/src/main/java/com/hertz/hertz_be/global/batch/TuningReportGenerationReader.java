@@ -13,7 +13,7 @@ import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
-public class TuningReportReader {
+public class TuningReportGenerationReader {
 
     private final EntityManagerFactory entityManagerFactory;
 

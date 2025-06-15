@@ -13,7 +13,6 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.database.JpaPagingItemReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -25,27 +24,33 @@ public class TuningReportGenerationJobConfig {
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
-    private final TuningReportGenerationReader tuningReportReader;
-    private final TuningReportGenerationWriter tuningReportWriter;
-    private final TuningReportGenerationProcessor tuningReportProcessor;
+    private final TuningReportGenerationReader tuningReportGenerationReader;
+    private final TuningReportGenerationWriter tuningReportGenerationWriter;
+    private final TuningReportGenerationProcessor tuningReportGenerationProcessor;
+    private final TuningReportVisibilityReader tuningReportVisibilityReader;
+    private final TuningReportVisibilityWriter tuningReportVisibilityWriter;
 
     private static final int CHUNK_SIZE = 20;
 
     @Bean
-    public Job tuningReportGenerationJob(Step tuningReportStep) {
+    public Job tuningReportGenerationJob() {
         return new JobBuilder("TuningReportGenerationJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
-                .start(tuningReportStep)
+                .start(tuningReportGenerationStep(null))
                 .build();
     }
 
     @Bean
-    public Step tuningReportGenerationStep(JpaPagingItemReader<SignalRoom> reader) {
+    @StepScope
+    public Step tuningReportGenerationStep(
+            @Value("#{jobParameters['category']}") String category
+    )
+    {
         return new StepBuilder("TuningReportGenerationStep", jobRepository)
                 .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
-                .reader(reader)
-                .processor(tuningReportProcessor)
-                .writer(tuningReportWriter)
+                .reader(tuningReportGenerationReader.reader(category))
+                .processor(tuningReportGenerationProcessor)
+                .writer(tuningReportGenerationWriter)
                 .faultTolerant()
                 .retryLimit(3)
                 .retry(AiServerBadRequestException.class)
@@ -53,9 +58,56 @@ public class TuningReportGenerationJobConfig {
     }
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<SignalRoom> reader(
-            @Value("#{jobParameters['category']}") String category) {
-        return tuningReportReader.reader(category);
+    public Job tuningReportGenerationJobForFriendTest() {
+        return new JobBuilder("TuningReportGenerationJobForFriendTest", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(tuningReportGenerationStepForFriendTest())
+                .build();
     }
+
+    @Bean
+    public Step tuningReportGenerationStepForFriendTest() {
+        return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
+                .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .reader(tuningReportGenerationReader.reader("FRIEND"))
+                .processor(tuningReportGenerationProcessor)
+                .writer(tuningReportGenerationWriter)
+                .build();
+    }
+
+    @Bean
+    public Job tuningReportGenerationJobForCoupleTest() {
+        return new JobBuilder("tuningReportGenerationJobForCoupleTest", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(tuningReportGenerationStepForFriendTest())
+                .build();
+    }
+
+    @Bean
+    public Step tuningReportGenerationStepForCoupledTest() {
+        return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
+                .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .reader(tuningReportGenerationReader.reader("COUPLE"))
+                .processor(tuningReportGenerationProcessor)
+                .writer(tuningReportGenerationWriter)
+                .build();
+    }
+
+    @Bean
+    public Job tuningReportVisibilityJobForTest() {
+        return new JobBuilder("tuningReportVisibilityJobForTest", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(tuningReportVisibilityStepForTest())
+                .build();
+    }
+
+    @Bean
+    public Step tuningReportVisibilityStepForTest() {
+        return new StepBuilder("tuningReportVisibilityStepForTest", jobRepository)
+                .<TuningReport, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .reader(tuningReportVisibilityReader.reader())
+                .writer(tuningReportVisibilityWriter)
+                .build();
+    }
+
 }

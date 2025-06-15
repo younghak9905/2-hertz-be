@@ -9,13 +9,13 @@ public enum TuningReportSortType {
     LATEST {
         @Override
         public Page<TuningReport> fetch(Pageable pageable, TuningReportRepository repository) {
-            return repository.findAllByOrderByCreatedAtDesc(pageable);
+            return repository.findAllNotDeletedOrderByCreatedAtDesc(pageable);
         }
     },
     POPULAR {
         @Override
         public Page<TuningReport> fetch(Pageable pageable, TuningReportRepository repository) {
-            return repository.findAllOrderByTotalReactionDesc(pageable);
+            return repository.findAllNotDeletedOrderByTotalReactionDesc(pageable);
         }
     };
 

@@ -14,7 +14,7 @@ public class TuningReportGenerationWriter implements ItemWriter<TuningReport> {
     private final TuningReportRepository tuningReportRepository;
 
     @Override
-    public void write(Chunk<? extends TuningReport> chunk) throws Exception {
+    public void write(Chunk<? extends TuningReport> chunk) {
         if(chunk.isEmpty()) return;
 
         // signal_room 데이터가 아니라 AI 튜닝 리포트 값이 들어와야 함

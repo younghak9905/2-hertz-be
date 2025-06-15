@@ -63,10 +63,6 @@ public class User {
     @Column(name = "is_couple_allowed", nullable = false)
     private Boolean isCoupleAllowed = true;
 
-    @Builder.Default
-    @Column(name = "is_meal_friend_allowed", nullable = false)
-    private Boolean isMealFriendAllowed = true;
-
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserOauth userOauth;
 

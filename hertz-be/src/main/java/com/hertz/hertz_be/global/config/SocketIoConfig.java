@@ -26,7 +26,10 @@ public class SocketIoConfig {
         config.setAllowCustomRequests(true);
         config.setTransports(Transport.WEBSOCKET, Transport.POLLING);
 
-        return new SocketIOServer(config);
+        SocketIOServer server = new SocketIOServer(config);
+        server.start();
+
+        return server;
 
     }
 

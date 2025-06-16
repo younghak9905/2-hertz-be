@@ -3,7 +3,7 @@ package com.hertz.hertz_be.domain.channel.service;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.hertz.hertz_be.domain.channel.dto.request.SignalMatchingRequestDto;
 import com.hertz.hertz_be.domain.channel.dto.response.*;
-import com.hertz.hertz_be.domain.channel.dto.socketio.MessageResponse;
+import com.hertz.hertz_be.global.socketio.dto.SocketIoMessageResponse;
 import com.hertz.hertz_be.domain.channel.entity.*;
 import com.hertz.hertz_be.domain.channel.entity.enums.Category;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
@@ -454,7 +454,7 @@ public class ChannelService {
         // 2. 메세지 WebSocket 전송
         String roomKey = "room-" + roomId;
         socketIOServer.getRoomOperations(roomKey)
-                        .sendEvent("receive_message", MessageResponse.from(signalMessage));
+                        .sendEvent("receive_message", SocketIoMessageResponse.from(signalMessage));
 
         entityManager.flush();
 

@@ -1,17 +1,17 @@
-package com.hertz.hertz_be.domain.channel.dto.socketio;
+package com.hertz.hertz_be.global.socketio.dto;
 
 import com.hertz.hertz_be.domain.channel.entity.SignalMessage;
 
 import java.time.LocalDateTime;
 
-public record MessageResponse (
+public record SocketIoMessageResponse(
         Long roomId,
         Long senderId,
         String message,
         LocalDateTime sendAt
 ){
-    public static MessageResponse from (SignalMessage message) {
-        return new MessageResponse(
+    public static SocketIoMessageResponse from (SignalMessage message) {
+        return new SocketIoMessageResponse(
                 message.getSignalRoom().getId(),
                 message.getSenderUser().getId(),
                 message.getMessage(),

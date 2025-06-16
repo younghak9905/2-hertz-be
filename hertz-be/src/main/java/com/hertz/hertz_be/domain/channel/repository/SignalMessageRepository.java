@@ -60,4 +60,14 @@ public interface SignalMessageRepository extends JpaRepository<SignalMessage, Lo
     void deleteAllBySignalRoom(SignalRoom signalRoom);
 
     int countBySignalRoom(SignalRoom signalRoom);
+
+    @Modifying
+    @Query("""
+    UPDATE SignalMessage sm
+    SET sm.isRead = true
+    WHERE sm.signalRoom.id = :roomId
+      AND sm.senderUser.id != :userId
+      AND sm.isRead = false
+""")
+    void markUnreadMessagesAsRead(@Param("roomId") Long roomId, @Param("userId") Long userId);
 }

@@ -1,7 +1,9 @@
 package com.hertz.hertz_be.domain.channel.service;
 
+import com.corundumstudio.socketio.SocketIOServer;
 import com.hertz.hertz_be.domain.channel.dto.request.SignalMatchingRequestDto;
 import com.hertz.hertz_be.domain.channel.dto.response.*;
+import com.hertz.hertz_be.domain.channel.dto.socketio.MessageResponse;
 import com.hertz.hertz_be.domain.channel.entity.*;
 import com.hertz.hertz_be.domain.channel.entity.enums.Category;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
@@ -65,6 +67,7 @@ public class ChannelService {
     private final AsyncChannelService asyncChannelService;
     private final WebClient webClient;
     private final AESUtil aesUtil;
+    private SocketIOServer socketIOServer;
 
     @Autowired
     public ChannelService(UserRepository userRepository,
@@ -78,7 +81,7 @@ public class ChannelService {
                           AsyncChannelService asyncChannelService,
                           SseChannelService matchingStatusScheduler,
                           AESUtil aesUtil,
-                          @Value("${ai.server.ip}") String aiServerIp) {
+                          @Value("${ai.server.ip}") String aiServerIp, SocketIOServer socketIOServer) {
         this.userRepository = userRepository;
         this.tuningRepository = tuningRepository;
         this.tuningResultRepository = tuningResultRepository;
@@ -90,6 +93,7 @@ public class ChannelService {
         this.asyncChannelService = asyncChannelService;
         this.aesUtil = aesUtil;
         this.webClient = WebClient.builder().baseUrl(aiServerIp).build();
+        this.socketIOServer = socketIOServer;
     }
 
     @Transactional
@@ -422,6 +426,7 @@ public class ChannelService {
 
     @Transactional
     public void sendChannelMessage(Long roomId, Long userId, SendSignalRequestDto response) {
+        // 1. 메세지 DB 저장
         SignalRoom room = signalRoomRepository.findById(roomId)
                 .orElseThrow(ChannelNotFoundException::new);
 
@@ -445,6 +450,11 @@ public class ChannelService {
                 .build();
 
         signalMessageRepository.save(signalMessage);
+
+        // 2. 메세지 WebSocket 전송
+        String roomKey = "room-" + roomId;
+        socketIOServer.getRoomOperations(roomKey)
+                        .sendEvent("receive_message", MessageResponse.from(signalMessage));
 
         entityManager.flush();
 

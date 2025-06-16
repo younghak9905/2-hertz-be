@@ -47,6 +47,7 @@ dependencies {
 	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
 	implementation 'com.corundumstudio.socketio:netty-socketio:2.0.9'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

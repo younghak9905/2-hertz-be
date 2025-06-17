@@ -16,12 +16,13 @@ import java.util.Optional;
 @Repository
 public interface TuningReportRepository extends JpaRepository<TuningReport, Long> {
 
-    @Query("SELECT r FROM TuningReport r WHERE r.deletedAt IS NULL ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM TuningReport r WHERE r.deletedAt IS NULL AND r.isVisible = true ORDER BY r.createdAt DESC")
     Page<TuningReport> findAllNotDeletedOrderByCreatedAtDesc(Pageable pageable);
 
     @Query("""
     SELECT r FROM TuningReport r
     WHERE r.deletedAt IS NULL
+    AND r.isVisible = true
     ORDER BY (
         r.reactionCelebrate +
         r.reactionThumbsUp +

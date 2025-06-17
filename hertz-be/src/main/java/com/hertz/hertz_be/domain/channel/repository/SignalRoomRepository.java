@@ -118,4 +118,10 @@ public interface SignalRoomRepository extends JpaRepository<SignalRoom, Long> {
 
     List<SignalRoom> findAllBySenderUserIdOrReceiverUserId(Long senderId, Long receiverId);
 
+    @Query("""
+        SELECT sr.id FROM SignalRoom sr
+        WHERE sr.senderUser.id = :userId OR sr.receiverUser.id = :userId
+    """)
+    List<Long> findRoomIdsByUserId(@Param("userId") Long userId);
+
 }

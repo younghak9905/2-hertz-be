@@ -36,19 +36,19 @@ public class TuningReportGenerationJobConfig {
     public Job tuningReportGenerationJob() {
         return new JobBuilder("TuningReportGenerationJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
-                .start(tuningReportGenerationStep(null))
+                .start(tuningReportGenerationStep(null, null))
                 .build();
     }
 
     @Bean
     @StepScope
     public Step tuningReportGenerationStep(
-            @Value("#{jobParameters['category']}") String category
-    )
-    {
+            @Value("#{jobParameters['category']}") String category,
+            @Value("#{jobParameters['timestamp']}") Long timestamp
+    ) {
         return new StepBuilder("TuningReportGenerationStep", jobRepository)
                 .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
-                .reader(tuningReportGenerationReader.reader(category))
+                .reader(tuningReportGenerationReader.reader(category, timestamp))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)
                 .faultTolerant()
@@ -69,7 +69,7 @@ public class TuningReportGenerationJobConfig {
     public Step tuningReportGenerationStepForFriendTest() {
         return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
                 .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
-                .reader(tuningReportGenerationReader.reader("FRIEND"))
+                .reader(tuningReportGenerationReader.reader("FRIEND", System.currentTimeMillis()))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)
                 .build();
@@ -79,7 +79,7 @@ public class TuningReportGenerationJobConfig {
     public Job tuningReportGenerationJobForCoupleTest() {
         return new JobBuilder("tuningReportGenerationJobForCoupleTest", jobRepository)
                 .incrementer(new RunIdIncrementer())
-                .start(tuningReportGenerationStepForFriendTest())
+                .start(tuningReportGenerationStepForCoupledTest())
                 .build();
     }
 
@@ -87,7 +87,7 @@ public class TuningReportGenerationJobConfig {
     public Step tuningReportGenerationStepForCoupledTest() {
         return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
                 .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
-                .reader(tuningReportGenerationReader.reader("COUPLE"))
+                .reader(tuningReportGenerationReader.reader("COUPLE", System.currentTimeMillis()))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)
                 .build();

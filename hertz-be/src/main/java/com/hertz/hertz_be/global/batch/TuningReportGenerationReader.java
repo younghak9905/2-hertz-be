@@ -4,8 +4,11 @@ import com.hertz.hertz_be.domain.channel.entity.SignalRoom;
 import com.hertz.hertz_be.domain.channel.entity.enums.Category;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.database.JpaPagingItemReader;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -17,26 +20,39 @@ public class TuningReportGenerationReader {
 
     private final EntityManagerFactory entityManagerFactory;
 
-    public JpaPagingItemReader<SignalRoom> reader(String category) {
+    @Bean
+    @StepScope
+    public JpaPagingItemReader<SignalRoom> reader(
+            @Value("#{jobParameters['category']}") String category,
+            @Value("#{jobParameters['timestamp']}") Long timestamp
+    ) {
         String jpql = """
-        SELECT sr FROM SignalRoom sr
-        WHERE sr.senderMatchingStatus = 'MATCHED'
-          AND sr.receiverMatchingStatus = 'MATCHED'
-          AND sr.category = :category
-          AND sr.createdAt <= :end
-    """;
+            SELECT sr FROM SignalRoom sr
+            JOIN FETCH sr.senderUser
+            JOIN FETCH sr.receiverUser
+            WHERE sr.senderMatchingStatus = 'MATCHED'
+              AND sr.receiverMatchingStatus = 'MATCHED'
+              AND sr.category = :category
+              AND sr.createdAt <= :end
+        """;
+
+        LocalDateTime endDateTime = LocalDateTime.ofInstant(
+                java.time.Instant.ofEpochMilli(timestamp),
+                java.time.ZoneId.systemDefault()
+        );
 
         Map<String, Object> parameters = Map.of(
                 "category", Category.valueOf(category),
-                "end", LocalDateTime.now().minusDays(1).withHour(23).withMinute(59).withSecond(59)
+                "end", endDateTime
         );
 
         return new JpaPagingItemReaderBuilder<SignalRoom>()
-                .name("categoryReader")
+                .name("tuningReportReader")
                 .entityManagerFactory(entityManagerFactory)
                 .queryString(jpql)
                 .parameterValues(parameters)
                 .pageSize(20)
+                .saveState(false)
                 .build();
     }
 }

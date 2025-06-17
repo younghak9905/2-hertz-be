@@ -21,9 +21,13 @@ public class TuningReportJobLauncher {
     private final JobLauncher jobLauncher;
 
     public void runGenerationBatch(String category) throws Exception {
+        String timestamp = java.time.LocalDateTime.now()
+                .minusDays(1)
+                .withHour(23).withMinute(59).withSecond(59).toString();
+
         JobParameters jobParameters = new JobParametersBuilder()
                 .addString("category", category)
-                .addLong("timestamp", System.currentTimeMillis())
+                .addString("timestamp", timestamp)
                 .toJobParameters();
 
         jobLauncher.run(tuningReportGenerationJob, jobParameters);

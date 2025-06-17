@@ -5,8 +5,6 @@ import com.hertz.hertz_be.domain.tuningreport.entity.enums.ReactionType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -86,7 +84,9 @@ public class TuningReport {
     }
 
     public void setVisible() {
-        this.isVisible = true;
+        if (!this.isVisible) {
+            this.isVisible = true;
+        }
     }
 
     public void increaseReaction(ReactionType type) {

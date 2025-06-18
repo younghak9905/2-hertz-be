@@ -2,19 +2,18 @@ package com.hertz.hertz_be.domain.auth.controller;
 
 import static com.hertz.hertz_be.global.util.AuthUtil.extractRefreshTokenFromCookie;
 import com.hertz.hertz_be.domain.auth.dto.response.ReissueAccessTokenResponseDto;
-import com.hertz.hertz_be.domain.auth.exception.RefreshTokenInvalidException;
+import com.hertz.hertz_be.domain.auth.responsecode.AuthResponseCode;
 import com.hertz.hertz_be.domain.auth.repository.RefreshTokenRepository;
 import com.hertz.hertz_be.domain.auth.service.AuthService;
 import com.hertz.hertz_be.domain.auth.dto.request.TestLoginRequestDto;
 import com.hertz.hertz_be.domain.user.service.UserService;
 import com.hertz.hertz_be.global.auth.token.JwtTokenProvider;
-import com.hertz.hertz_be.global.common.ResponseCode;
 import com.hertz.hertz_be.global.common.ResponseDto;
+import com.hertz.hertz_be.global.exception.BusinessException;
 import com.hertz.hertz_be.global.util.AuthUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -52,7 +51,10 @@ public class AuthController {
 
         String refreshToken = extractRefreshTokenFromCookie(request);
         if (refreshToken == null) {
-            throw new RefreshTokenInvalidException();
+            throw new BusinessException(
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getCode(),
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getHttpStatus(),
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getMessage());
         }
 
         Map.Entry<ReissueAccessTokenResponseDto, String> result = authTokenService.reissueAccessToken(refreshToken);
@@ -62,7 +64,7 @@ public class AuthController {
         AuthUtil.setRefreshTokenCookie(response, newRefreshToken, maxAgeSeconds, isLocal);
 
         return ResponseEntity.ok(
-                new ResponseDto<>(ResponseCode.ACCESS_TOKEN_REISSUED, "Access Token이 재발급되었습니다.", accessTokenResponse)
+                new ResponseDto<>(AuthResponseCode.ACCESS_TOKEN_REISSUED.getCode(), AuthResponseCode.ACCESS_TOKEN_REISSUED.getMessage(), accessTokenResponse)
         );
     }
 
@@ -104,7 +106,7 @@ public class AuthController {
     public ResponseEntity<ResponseDto<Void>> deleteUserById(@PathVariable Long userId) {
         userService.deleteUserById(userId);
         return ResponseEntity.ok(
-                new ResponseDto<>(ResponseCode.USER_DELETE_SUCCESS, "사용자가 정상적으로 삭제되었습니다.", null)
+                new ResponseDto<>(AuthResponseCode.USER_DELETE_SUCCESS.getCode(), AuthResponseCode.USER_DELETE_SUCCESS.getMessage(), null)
         );
     }
 
@@ -113,7 +115,7 @@ public class AuthController {
     public ResponseEntity<ResponseDto<Void>> deleteAllUsers() {
         userService.deleteAllUsers();
         return ResponseEntity.ok(
-                new ResponseDto<>(ResponseCode.USER_DELETE_SUCCESS, "모든 사용자와 사용자 관련 데이터 모두 정상적으로 삭제되었습니다.", null)
+                new ResponseDto<>(AuthResponseCode.USER_DELETE_SUCCESS.getCode(), AuthResponseCode.USER_DELETE_SUCCESS.getMessage(), null)
         );
     }
 
@@ -122,7 +124,7 @@ public class AuthController {
     public ResponseEntity<ResponseDto<Void>> logout(@AuthenticationPrincipal Long userId) {
         authService.logout(userId);
         return ResponseEntity.ok(
-                new ResponseDto<>(ResponseCode.LOGOUT_SUCCESS, "정상적으로 로그아웃되었습니다.", null)
+                new ResponseDto<>(AuthResponseCode.LOGOUT_SUCCESS.getCode(), AuthResponseCode.LOGOUT_SUCCESS.getMessage(), null)
         );
     }
 }

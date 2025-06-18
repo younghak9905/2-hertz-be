@@ -15,10 +15,11 @@ import com.hertz.hertz_be.domain.alarm.repository.AlarmRepository;
 import com.hertz.hertz_be.domain.alarm.repository.UserAlarmRepository;
 import com.hertz.hertz_be.domain.channel.entity.SignalRoom;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
-import com.hertz.hertz_be.domain.channel.exception.UserNotFoundException;
 import com.hertz.hertz_be.domain.user.entity.User;
+import com.hertz.hertz_be.domain.user.responsecode.UserResponseCode;
 import com.hertz.hertz_be.domain.user.repository.UserRepository;
-import com.hertz.hertz_be.global.exception.InternalServerErrorException;
+import com.hertz.hertz_be.global.common.NewResponseCode;
+import com.hertz.hertz_be.global.exception.BusinessException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.Page;
@@ -27,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationAdapter;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
@@ -52,7 +52,11 @@ public class AlarmService {
     @Transactional
     public void createNotifyAlarm(CreateNotifyAlarmRequestDto dto, Long userId) {
         User notifyWriter = userRepository.findById(userId)
-                .orElseThrow(UserNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        "공지 알람 작성 API를 요청한 사용자가 존재하지 않습니다."
+                ));
 
         AlarmNotification alarmNotification = AlarmNotification.builder()
                 .title(dto.getTitle())
@@ -181,7 +185,11 @@ public class AlarmService {
                                 report.getCreatedAt().toString()
                         );
                     } else {
-                        throw new InternalServerErrorException();
+                        throw new BusinessException(
+                                NewResponseCode.INTERNAL_SERVER_ERROR.getCode(),
+                                NewResponseCode.INTERNAL_SERVER_ERROR.getHttpStatus(),
+                                "알람 리스트 반환 중 예외 발생했습니다."
+                        );
                     }
                 })
                 .collect(Collectors.toList());
@@ -205,8 +213,13 @@ public class AlarmService {
 
     @Transactional
     public void deleteAlarm(Long alarmId, Long userId) {
-        userRepository.findById(userId)
-                .orElseThrow(UserNotFoundException::new);
+        if (!userRepository.existsById(userId)) {
+            throw new BusinessException(
+                    UserResponseCode.USER_NOT_FOUND.getCode(),
+                    UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                    "알람 삭제 API를 요청한 사용자가 존재하지 않습니다."
+            );
+        }
 
         alarmRepository.deleteById(alarmId);
     }

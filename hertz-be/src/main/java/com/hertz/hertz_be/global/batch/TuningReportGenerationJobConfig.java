@@ -3,6 +3,7 @@ package com.hertz.hertz_be.global.batch;
 import com.hertz.hertz_be.domain.channel.entity.SignalRoom;
 import com.hertz.hertz_be.domain.tuningreport.entity.TuningReport;
 import com.hertz.hertz_be.global.exception.AiServerBadRequestException;
+import com.hertz.hertz_be.global.infra.ai.dto.AiTuningReportGenerationRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.batch.core.Job;
@@ -47,7 +48,7 @@ public class TuningReportGenerationJobConfig {
             @Value("#{jobParameters['timestamp']}") Long timestamp
     ) {
         return new StepBuilder("TuningReportGenerationStep", jobRepository)
-                .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .<SignalRoom, AiTuningReportGenerationRequest>chunk(CHUNK_SIZE, transactionManager)
                 .reader(tuningReportGenerationReader.reader(category, timestamp))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)
@@ -68,7 +69,7 @@ public class TuningReportGenerationJobConfig {
     @Bean
     public Step tuningReportGenerationStepForFriendTest() {
         return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
-                .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .<SignalRoom, AiTuningReportGenerationRequest>chunk(CHUNK_SIZE, transactionManager)
                 .reader(tuningReportGenerationReader.reader("FRIEND", System.currentTimeMillis()))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)
@@ -86,7 +87,7 @@ public class TuningReportGenerationJobConfig {
     @Bean
     public Step tuningReportGenerationStepForCoupledTest() {
         return new StepBuilder("TuningReportGenerationStepForTest", jobRepository)
-                .<SignalRoom, TuningReport>chunk(CHUNK_SIZE, transactionManager)
+                .<SignalRoom, AiTuningReportGenerationRequest>chunk(CHUNK_SIZE, transactionManager)
                 .reader(tuningReportGenerationReader.reader("COUPLE", System.currentTimeMillis()))
                 .processor(tuningReportGenerationProcessor)
                 .writer(tuningReportGenerationWriter)

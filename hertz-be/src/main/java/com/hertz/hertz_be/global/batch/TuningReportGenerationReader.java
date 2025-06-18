@@ -28,8 +28,6 @@ public class TuningReportGenerationReader {
     ) {
         String jpql = """
             SELECT sr FROM SignalRoom sr
-            JOIN FETCH sr.senderUser
-            JOIN FETCH sr.receiverUser
             WHERE sr.senderMatchingStatus = 'MATCHED'
               AND sr.receiverMatchingStatus = 'MATCHED'
               AND sr.category = :category
@@ -41,18 +39,17 @@ public class TuningReportGenerationReader {
                 java.time.ZoneId.systemDefault()
         );
 
-        Map<String, Object> parameters = Map.of(
-                "category", Category.valueOf(category),
-                "end", endDateTime
-        );
-
         return new JpaPagingItemReaderBuilder<SignalRoom>()
                 .name("tuningReportReader")
                 .entityManagerFactory(entityManagerFactory)
                 .queryString(jpql)
-                .parameterValues(parameters)
+                .parameterValues(Map.of(
+                        "category", Category.valueOf(category),
+                        "end", endDateTime
+                ))
                 .pageSize(20)
-                .saveState(false)
+                .saveState(true) // ← 꼭 true로
+                .transacted(false)
                 .build();
     }
 }

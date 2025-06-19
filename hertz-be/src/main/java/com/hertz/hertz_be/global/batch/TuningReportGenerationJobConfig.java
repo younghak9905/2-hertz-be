@@ -31,7 +31,7 @@ public class TuningReportGenerationJobConfig {
     private final TuningReportVisibilityReader tuningReportVisibilityReader;
     private final TuningReportVisibilityWriter tuningReportVisibilityWriter;
 
-    private static final int CHUNK_SIZE = 20;
+    private static final int CHUNK_SIZE = 10;
 
     @Bean
     public Job tuningReportGenerationJob() {

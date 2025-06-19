@@ -10,12 +10,14 @@ import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilde
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class TuningReportGenerationReader {
 
     private final EntityManagerFactory entityManagerFactory;
@@ -48,7 +50,7 @@ public class TuningReportGenerationReader {
                         "end", endDateTime
                 ))
                 .pageSize(20)
-                .saveState(true) // ← 꼭 true로
+                .saveState(false)
                 .transacted(false)
                 .build();
     }

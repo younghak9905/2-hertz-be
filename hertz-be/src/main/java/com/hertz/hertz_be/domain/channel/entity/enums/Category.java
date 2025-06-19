@@ -7,8 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum Category {
     FRIEND("친구"),
-    COUPLE("커플"),
-    MEAL_FRIEND("밥친구");
+    COUPLE("커플");
 
     private final String label;
 }

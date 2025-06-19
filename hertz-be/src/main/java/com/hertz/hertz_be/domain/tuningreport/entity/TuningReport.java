@@ -5,8 +5,6 @@ import com.hertz.hertz_be.domain.tuningreport.entity.enums.ReactionType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.ColumnDefault;
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -15,8 +13,8 @@ import java.util.Map;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
-//@SQLDelete(sql = "UPDATE tuning_report SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
-@Where(clause = "deleted_at IS NULL")
+// @SQLDelete(sql = "UPDATE tuning_report SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
+//@Where(clause = "deleted_at IS NULL")
 @Table(name = "tuning_report")
 @Builder
 public class TuningReport {
@@ -83,6 +81,12 @@ public class TuningReport {
     @PreUpdate
     public void preUpdate() { // 엔티티 수정 전 호출
         this.modifiedAt = LocalDateTime.now();
+    }
+
+    public void setVisible() {
+        if (!this.isVisible) {
+            this.isVisible = true;
+        }
     }
 
     public void increaseReaction(ReactionType type) {

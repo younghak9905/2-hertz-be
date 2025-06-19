@@ -9,14 +9,18 @@ public record AiTuningReportGenerationRequest(
         String category,
         int chatCount,
         UserData userA,
-        UserData userB
+        UserData userB,
+        String emailDomain,
+        AiSignalRoomDto signalRoom
 ) {
-    public static AiTuningReportGenerationRequest of(SignalRoom room, int chatCount, UserData userA, UserData userB) {
+    public static AiTuningReportGenerationRequest of(SignalRoom room, int chatCount, UserData userA, UserData userB, String emailDomain) {
         return new AiTuningReportGenerationRequest(
                 room.getCategory().name(),
                 chatCount,
                 userA,
-                userB
+                userB,
+                emailDomain,
+                AiSignalRoomDto.from(room)
         );
     }
 

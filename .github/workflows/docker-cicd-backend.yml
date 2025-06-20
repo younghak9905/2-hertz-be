@@ -281,12 +281,17 @@ jobs:
       - name: Update SSM parameter
         if: env.ENV == 'DEV'
         run: |
-          if [[ "${{ github.event.inputs.redirect_url }}" == "local" ]]; then
-            REDIRECT_URL="${{ secrets.REDIRECT_URL_LOCAL }}"
-          elif [[ "${{ github.event.inputs.redirect_url }}" == "dev" ]]; then
-            REDIRECT_URL="${{ secrets.REDIRECT_URL_DEV }}"
-          elif [[ "${{ github.event.inputs.redirect_url }}" == "stage" ]]; then
-            REDIRECT_URL="${{ secrets.REDIRECT_URL_APP }}"
+          
+          if [[ "${{ github.event_name }}" == 'workflow_dispatch' ]]; then
+            if [[ "${{ github.event.inputs.redirect_url }}" == "local" ]]; then
+              REDIRECT_URL="${{ secrets.REDIRECT_URL_LOCAL }}"
+            elif [[ "${{ github.event.inputs.redirect_url }}" == "dev" ]]; then
+              REDIRECT_URL="${{ secrets.REDIRECT_URL_DEV }}"
+            elif [[ "${{ github.event.inputs.redirect_url }}" == "stage" ]]; then
+              REDIRECT_URL="${{ secrets.REDIRECT_URL_APP }}"
+            else
+              REDIRECT_URL="${{ secrets.REDIRECT_URL_DEV }}"
+            fi
           else
             REDIRECT_URL="${{ secrets.REDIRECT_URL_DEV }}"
           fi

@@ -288,8 +288,7 @@ jobs:
           elif [[ "${{ github.event.inputs.redirect_url }}" == "stage" ]]; then
             REDIRECT_URL="${{ secrets.REDIRECT_URL_APP }}"
           else
-            echo "[ERROR]Redirect URL을 선택해주세요."
-            exit 1
+            REDIRECT_URL="${{ secrets.REDIRECT_URL_DEV }}"
           fi
 
           aws ssm put-parameter \

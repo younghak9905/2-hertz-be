@@ -56,7 +56,7 @@ jobs:
         run: |
 
           if [ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]; then
-            BRANCH="${{ github.event.inputs.env }}"
+            BRANCH="${{ github.ref_name }}"
               else
             BRANCH="${{ github.ref_name }}"
           fi
@@ -227,7 +227,9 @@ jobs:
             echo "$VALUE" > "$2"
           }
 
-          BRANCH="${{ env.BRANCH }}"
+
+          BRANCH="${{ github.ref_name }}"
+          
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
           if [[ "$BRANCH" == "main" ]]; then
             echo "ENV=PROD" >> $GITHUB_ENV

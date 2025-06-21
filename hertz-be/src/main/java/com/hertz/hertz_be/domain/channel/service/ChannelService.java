@@ -1,39 +1,45 @@
 package com.hertz.hertz_be.domain.channel.service;
 
-import com.hertz.hertz_be.domain.channel.dto.request.SignalMatchingRequestDTO;
+import com.corundumstudio.socketio.SocketIOServer;
+import com.hertz.hertz_be.domain.channel.dto.request.SignalMatchingRequestDto;
 import com.hertz.hertz_be.domain.channel.dto.response.*;
+import com.hertz.hertz_be.domain.user.responsecode.UserResponseCode;
+import com.hertz.hertz_be.global.common.NewResponseCode;
+import com.hertz.hertz_be.global.exception.*;
+import com.hertz.hertz_be.global.socketio.dto.SocketIoMessageResponse;
 import com.hertz.hertz_be.domain.channel.entity.*;
 import com.hertz.hertz_be.domain.channel.entity.enums.Category;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
-import com.hertz.hertz_be.domain.channel.dto.request.SendSignalRequestDTO;
-import com.hertz.hertz_be.domain.channel.exception.*;
+import com.hertz.hertz_be.domain.channel.dto.request.SendSignalRequestDto;
+import com.hertz.hertz_be.domain.channel.responsecode.*;
 import com.hertz.hertz_be.domain.channel.repository.*;
 import com.hertz.hertz_be.domain.channel.repository.projection.ChannelRoomProjection;
 import com.hertz.hertz_be.domain.channel.repository.projection.RoomWithLastSenderProjection;
 import com.hertz.hertz_be.domain.interests.entity.enums.InterestsCategoryType;
 import com.hertz.hertz_be.domain.interests.repository.UserInterestsRepository;
+import com.hertz.hertz_be.domain.interests.service.InterestsService;
 import com.hertz.hertz_be.domain.user.entity.User;
-import com.hertz.hertz_be.domain.user.exception.UserException;
 import com.hertz.hertz_be.domain.user.repository.UserRepository;
-import com.hertz.hertz_be.global.common.AESUtil;
-import com.hertz.hertz_be.global.common.ResponseCode;
-import com.hertz.hertz_be.global.exception.AiServerBadRequestException;
-import com.hertz.hertz_be.global.exception.AiServerErrorException;
-import com.hertz.hertz_be.global.exception.AiServerNotFoundException;
-import com.hertz.hertz_be.global.exception.InternalServerErrorException;
+import com.hertz.hertz_be.global.util.AESUtil;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -43,6 +49,9 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class ChannelService {
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private final UserRepository userRepository;
     private final TuningRepository tuningRepository;
     private final TuningResultRepository tuningResultRepository;
@@ -50,8 +59,11 @@ public class ChannelService {
     private final SignalRoomRepository signalRoomRepository;
     private final SignalMessageRepository signalMessageRepository;
     private final ChannelRoomRepository channelRoomRepository;
+    private final InterestsService interestsService;
+    private final AsyncChannelService asyncChannelService;
     private final WebClient webClient;
     private final AESUtil aesUtil;
+    private SocketIOServer socketIOServer;
 
     @Autowired
     public ChannelService(UserRepository userRepository,
@@ -61,8 +73,11 @@ public class ChannelService {
                           SignalRoomRepository signalRoomRepository,
                           SignalMessageRepository signalMessageRepository,
                           ChannelRoomRepository channelRoomRepository,
+                          InterestsService interestsService,
+                          AsyncChannelService asyncChannelService,
+                          SseChannelService matchingStatusScheduler,
                           AESUtil aesUtil,
-                          @Value("${ai.server.ip}") String aiServerIp) {
+                          @Value("${ai.server.ip}") String aiServerIp, SocketIOServer socketIOServer) {
         this.userRepository = userRepository;
         this.tuningRepository = tuningRepository;
         this.tuningResultRepository = tuningResultRepository;
@@ -70,25 +85,44 @@ public class ChannelService {
         this.signalMessageRepository = signalMessageRepository;
         this.signalRoomRepository = signalRoomRepository;
         this.channelRoomRepository = channelRoomRepository;
+        this.interestsService = interestsService;
+        this.asyncChannelService = asyncChannelService;
         this.aesUtil = aesUtil;
         this.webClient = WebClient.builder().baseUrl(aiServerIp).build();
+        this.socketIOServer = socketIOServer;
     }
 
     @Transactional
-    public SendSignalResponseDTO sendSignal(Long senderUserId, SendSignalRequestDTO dto) {
+    public SendSignalResponseDto sendSignal(Long senderUserId, SendSignalRequestDto dto) {
         User sender = userRepository.findById(senderUserId)
-                .orElseThrow(UserNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        "시그널 보내기 요청한 사용자가 존재하지 않습니다."
+                ));
 
         User receiver = userRepository.findById(dto.getReceiverUserId())
-                .orElseThrow(UserWithdrawnException::new);
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_DEACTIVATED.getCode(),
+                        UserResponseCode.USER_DEACTIVATED.getHttpStatus(),
+                        UserResponseCode.USER_DEACTIVATED.getMessage()
+                ));
 
 
         String userPairSignal = generateUserPairSignal(sender.getId(), receiver.getId());
         Optional<SignalRoom> existingRoom = signalRoomRepository.findByUserPairSignal(userPairSignal);
         if (existingRoom.isPresent()) {
-            throw new AlreadyInConversationException();
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getCode(),
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getHttpStatus(),
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getMessage()
+            );
         } else if (Objects.equals(sender.getId(), receiver.getId())) {
-            throw new CannotSendSignalToSelfException();
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getCode(),
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getHttpStatus(),
+                    "자기 자신에게는 시그널을 보낼 수 없습니다."
+            );
         }
 
         SignalRoom signalRoom = SignalRoom.builder()
@@ -99,7 +133,16 @@ public class ChannelService {
                 .receiverMatchingStatus(MatchingStatus.SIGNAL)
                 .userPairSignal(userPairSignal)
                 .build();
-        signalRoomRepository.save(signalRoom);
+
+        try {
+            signalRoomRepository.save(signalRoom);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getCode(),
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getHttpStatus(),
+                    ChannelResponseCode.ALREADY_IN_CONVERSATION.getMessage()
+            );
+        }
 
         String encryptMessage = aesUtil.encrypt(dto.getMessage());
 
@@ -111,7 +154,16 @@ public class ChannelService {
                 .build();
         signalMessageRepository.save(signalMessage);
 
-        return new SendSignalResponseDTO(signalRoom.getId());
+        entityManager.flush();
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncChannelService.sendNewMessageNotifyToPartner(signalMessage, receiver.getId(), true);
+            }
+        });
+
+        return new SendSignalResponseDto(signalRoom.getId());
     }
 
     public static String generateUserPairSignal(Long userId1, Long userId2) {
@@ -122,7 +174,11 @@ public class ChannelService {
 
     public User getUserById(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(UserNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        UserResponseCode.USER_NOT_FOUND.getMessage()
+                ));
     }
 
     public boolean hasSelectedInterests(User user) {
@@ -130,11 +186,15 @@ public class ChannelService {
     }
 
     @Transactional
-    public TuningResponseDTO getTunedUser(Long userId) {
+    public TuningResponseDto getTunedUser(Long userId) {
         User requester = getUserById(userId);
 
         if (!hasSelectedInterests(requester)) {
-            throw new InterestsNotSelectedException();
+            throw new BusinessException(
+                    ChannelResponseCode.USER_INTERESTS_NOT_SELECTED.getCode(),
+                    ChannelResponseCode.USER_INTERESTS_NOT_SELECTED.getHttpStatus(),
+                    ChannelResponseCode.USER_INTERESTS_NOT_SELECTED.getMessage()
+            );
         }
 
         Tuning tuning = getOrCreateTuning(requester);
@@ -167,34 +227,59 @@ public class ChannelService {
         Map<String, Object> responseMap = requestTuningFromAiServer(userId);
         String code = (String) responseMap.get("code");
 
-        switch (code) {
-            case ResponseCode.TUNING_SUCCESS_BUT_NO_MATCH -> {
-                return false;
-            }
-            case ResponseCode.TUNING_BAD_REQUEST -> {
-                throw new AiServerBadRequestException();
-            }
-            case ResponseCode.TUNING_NOT_FOUND_USER -> {
-                throw new AiServerNotFoundException();
-            }
-            case ResponseCode.TUNING_INTERNAL_SERVER_ERROR -> {
-                throw new AiServerErrorException(ResponseCode.TUNING_INTERNAL_SERVER_ERROR);
-            }
-            case ResponseCode.TUNING_SUCCESS -> {
-                Object dataObj = responseMap.get("data");
-                if (!(dataObj instanceof Map data)) {
-                    throw new AiServerErrorException(ResponseCode.TUNING_NOT_FOUND_DATA);
-                }
+        if (ChannelResponseCode.TUNING_SUCCESS_BUT_NO_MATCH.getCode().equals(code)) {
+            return false;
 
-                List<Integer> userIdList = (List<Integer>) data.get("userIdList");
-                if (userIdList == null || userIdList.isEmpty()) {
-                    throw new AiServerErrorException(ResponseCode.TUNING_NOT_FOUND_LIST);
-                }
+        } else if (ChannelResponseCode.TUNING_BAD_REQUEST.getCode().equals(code)) {
+            throw new BusinessException(
+                    NewResponseCode.AI_SERVER_ERROR.getCode(),
+                    NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                    "AI 서버에서 bad request 발생했습니다."
+            );
 
-                saveTuningResults(userIdList, tuning);
-                return true;
+        } else if (ChannelResponseCode.TUNING_NOT_FOUND_USER.getCode().equals(code)) {
+            throw new BusinessException(
+                    NewResponseCode.AI_SERVER_ERROR.getCode(),
+                    NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                    "AI 서버에서 사용자를 찾을 수 없습니다."
+            );
+
+        } else if (ChannelResponseCode.TUNING_INTERNAL_SERVER_ERROR.getCode().equals(code)) {
+            throw new BusinessException(
+                    NewResponseCode.AI_SERVER_ERROR.getCode(),
+                    NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                    "튜닝 과정에서 AI 서버 오류 발생했습니다."
+            );
+
+        } else if (ChannelResponseCode.TUNING_SUCCESS.getCode().equals(code)) {
+            Object dataObj = responseMap.get("data");
+            if (!(dataObj instanceof Map)) {
+                throw new BusinessException(
+                        NewResponseCode.AI_SERVER_ERROR.getCode(),
+                        NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                        "튜닝 과정에서 AI 서버 오류 발생했습니다."
+                );
             }
-            default -> throw new InternalServerErrorException();
+
+            Map<?, ?> data = (Map<?, ?>) dataObj;
+            List<Integer> userIdList = (List<Integer>) data.get("userIdList");
+            if (userIdList == null || userIdList.isEmpty()) {
+                throw new BusinessException(
+                        NewResponseCode.AI_SERVER_ERROR.getCode(),
+                        NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                        "튜닝 과정에서 AI 서버 오류 발생했습니다."
+                );
+            }
+
+            saveTuningResults(userIdList, tuning);
+            return true;
+
+        } else {
+            throw new BusinessException(
+                    NewResponseCode.INTERNAL_SERVER_ERROR.getCode(),
+                    NewResponseCode.INTERNAL_SERVER_ERROR.getHttpStatus(),
+                    "튜닝 과정에서 BE 서버 오류 발생했습니다."
+            );
         }
     }
 
@@ -208,7 +293,11 @@ public class ChannelService {
                 .block();
 
         if (responseMap == null || !responseMap.containsKey("code")) {
-            throw new AiServerErrorException(ResponseCode.TUNING_INTERNAL_SERVER_ERROR);
+            throw new BusinessException(
+                    NewResponseCode.AI_SERVER_ERROR.getCode(),
+                    NewResponseCode.AI_SERVER_ERROR.getHttpStatus(),
+                    "튜닝 과정에서 AI 서버 오류 발생했습니다."
+            );
         }
         return responseMap;
     }
@@ -230,7 +319,11 @@ public class ChannelService {
             Long matchedId = Long.valueOf(matchedUserId);
 
             User matchedUser = userRepository.findById(matchedId)
-                    .orElseThrow(UserWithdrawnException::new);
+                    .orElseThrow(() -> new BusinessException(
+                            UserResponseCode.USER_DEACTIVATED.getCode(),
+                            UserResponseCode.USER_DEACTIVATED.getHttpStatus(),
+                            "BE 서버에 없는 사용자 id가 AI 서버로부터 넘어왔습니다."
+                    ));
 
             if (!hasSelectedInterests(matchedUser)) {
                 continue;
@@ -251,14 +344,13 @@ public class ChannelService {
         }
     }
 
-    private TuningResponseDTO buildTuningResponseDTO(Long requesterId, User target) {
-        Map<String, String> keywords = getUserKeywords(target.getId());
+    private TuningResponseDto buildTuningResponseDTO(Long requesterId, User target) {
+        Map<String, String> keywords = interestsService.getUserKeywords(target.getId());
+        Map<String, List<String>> requesterInterests = interestsService.getUserInterests(requesterId);
+        Map<String, List<String>> targetInterests = interestsService.getUserInterests(target.getId());
+        Map<String, List<String>> sameInterests = interestsService.extractSameInterests(requesterInterests, targetInterests);
 
-        Map<String, List<String>> requesterInterests = getUserInterests(requesterId);
-        Map<String, List<String>> targetInterests = getUserInterests(target.getId());
-        Map<String, List<String>> sameInterests = extractSameInterests(requesterInterests, targetInterests);
-
-        return new TuningResponseDTO(
+        return new TuningResponseDto(
                 target.getId(),
                 target.getProfileImageUrl(),
                 target.getNickname(),
@@ -270,16 +362,24 @@ public class ChannelService {
     }
 
 
-    public Map<String, String> getUserKeywords(Long userId) {
-        Map<String, String> keywords = userInterestsRepository.findByUserId(userId).stream()
-                .filter(ui -> ui.getCategoryItem().getCategory().getCategoryType() == InterestsCategoryType.KEYWORD)
-                .collect(
-                        LinkedHashMap::new,
-                        (map, ui) -> map.put(ui.getCategoryItem().getCategory().getName(), ui.getCategoryItem().getName()),
-                        LinkedHashMap::putAll
-                );
+    @Transactional(readOnly = true)
+    public boolean hasNewMessages(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        UserResponseCode.USER_NOT_FOUND.getMessage()
+                ));
 
-        return keywords;
+        List<SignalRoom> allRooms = Stream.concat(
+                user.getSentSignalRooms().stream(),
+                user.getReceivedSignalRooms().stream()
+        ).collect(Collectors.toList());
+
+        if (allRooms.isEmpty()) return false;
+
+        return signalMessageRepository.existsBySignalRoomInAndSenderUserNotAndIsReadFalse(allRooms, user);
+
     }
 
     public Map<String, List<String>> getUserInterests(Long userId) {
@@ -303,11 +403,9 @@ public class ChannelService {
             List<String> list1 = interests1.getOrDefault(category, Collections.emptyList());
             List<String> list2 = interests2.getOrDefault(category, Collections.emptyList());
 
-            // 교집합 추출
             Set<String> common = new HashSet<>(list1);
             common.retainAll(list2);
 
-            // 값이 있으면 1개만 반환, 없으면 빈 리스트
             if (!common.isEmpty()) {
                 sameInterests.put(category, List.of(common.iterator().next()));
             } else {
@@ -316,32 +414,23 @@ public class ChannelService {
         }
 
         return sameInterests;
+
     }
 
-    @Transactional(readOnly = true)
-    public boolean hasNewMessages(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(UserNotFoundException::new);
-
-        List<SignalRoom> allRooms = Stream.concat(
-                user.getSentSignalRooms().stream(),
-                user.getReceivedSignalRooms().stream()
-        ).collect(Collectors.toList());
-
-        if (allRooms.isEmpty()) return false;
-
-        return signalMessageRepository.existsBySignalRoomInAndSenderUserNotAndIsReadFalse(allRooms, user);
-    }
-
-    // Todo: 추후 시그널 -> 채널로 마이그레이션 시 메소드명 변경 필요 (getPersonalSignalRoomList -> getPersonalChannelList)
     public ChannelListResponseDto getPersonalSignalRoomList(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<ChannelRoomProjection> result = signalRoomRepository.findChannelRoomsWithPartnerAndLastMessage(userId, pageable);
+
         if (result.isEmpty()) {
             return null;
         }
 
         List<ChannelSummaryDto> list = result.getContent().stream()
+                .filter(p -> {
+                    boolean isSender = userId.equals(p.getSenderUserId());
+                    LocalDateTime exitedAt = isSender ? p.getSenderExitedAt() : p.getReceiverExitedAt();
+                    return exitedAt == null;
+                })
                 .map(p -> ChannelSummaryDto.fromProjectionWithDecrypt(p, aesUtil))
                 .toList();
 
@@ -349,28 +438,51 @@ public class ChannelService {
     }
 
     @Transactional
-    public ChannelRoomResponseDto getChannelRoomMessages(Long roomId, Long userId, int page, int size) {
+    public ChannelRoomResponseDto getChannelRoom(Long roomId, Long userId, int page, int size) {
         SignalRoom room = signalRoomRepository.findById(roomId)
-                .orElseThrow(ChannelNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getCode(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getHttpStatus(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getMessage()
+                ));
 
         if (!room.isParticipant(userId)) {
-            throw new ForbiddenChannelException();
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getCode(),
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getHttpStatus(),
+                    "사용자가 참여 중인 채팅방 아닙니다."
+            );
         }
 
+        if (room.isUserExited(userId)) {
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getCode(),
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getHttpStatus(),
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getMessage()
+            );
+        }
+
+        boolean isPartnerExited = room.isPartnerExited(userId);
+
         Long partnerId = room.getPartnerUser(userId).getId();
-        // Todo: AI 쪽 DB에만 사용자 남아있는 경우 410 발생하며 모든 사용자 서비스 사용 불가능한 부분 리팩토링 필요
+
         User partner = userRepository.findByIdAndDeletedAtIsNull(partnerId)
-                .orElseThrow(() -> new UserException("USER_DEACTIVATED", "상대방이 탈퇴한 사용자입니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_DEACTIVATED.getCode(),
+                        UserResponseCode.USER_DEACTIVATED.getHttpStatus(),
+                        UserResponseCode.USER_DEACTIVATED.getMessage()
+                ));
 
         Optional<RoomWithLastSenderProjection> result = signalMessageRepository.findRoomsWithLastSender(roomId);
 
-        // 마지막 메세지를 보낸 사람이
         if(result.isPresent()){
             RoomWithLastSenderProjection lastSender = result.get();
-            if (!Objects.equals(lastSender.getLastSenderId(), userId)) { // 내가 아닐 경우
-                signalMessageRepository.markAllMessagesAsReadByRoomId(roomId); // isRead = true 처리
+            if (!Objects.equals(lastSender.getLastSenderId(), userId)) {
+                signalMessageRepository.markAllMessagesAsReadByRoomId(roomId);
             }
         }
+
+        asyncChannelService.notifyMatchingConvertedInChannelRoom(room, userId);
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "sendAt"));
         Page<SignalMessage> messagePage = signalMessageRepository.findBySignalRoom_Id(roomId, pageable);
@@ -379,28 +491,53 @@ public class ChannelService {
                 .map(msg -> ChannelRoomResponseDto.MessageDto.fromProjectionWithDecrypt(msg, aesUtil))
                 .toList();
 
-        return ChannelRoomResponseDto.of(roomId, partner, room.getRelationType(), messages, messagePage);
+        entityManager.flush();
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncChannelService.updateNavbarMessageNotification(userId);
+            }
+        });
+
+        return ChannelRoomResponseDto.of(roomId, partner, room.getRelationType(), isPartnerExited, messages, messagePage);
     }
 
     @Transactional
-    public void sendChannelMessage(Long roomId, Long userId, SendSignalRequestDTO response) {
+    public void sendChannelMessage(Long roomId, Long userId, SendSignalRequestDto response) {
+        // 1. 메세지 DB 저장
         SignalRoom room = signalRoomRepository.findById(roomId)
-                .orElseThrow(ChannelNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getCode(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getHttpStatus(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getMessage()
+                ));
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_NOT_FOUND, "사용자가 존재하지 않습니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        "메세지 전송을 요청한 사용자가 존재하지 않습니다."
+                ));
 
         if (!room.isParticipant(userId)) {
-            throw new ForbiddenChannelException();
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getCode(),
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getHttpStatus(),
+                    "사용자가 참여 중인 채팅방 아닙니다."
+            );
         }
 
         Long partnerId = room.getPartnerUser(userId).getId();
         userRepository.findByIdAndDeletedAtIsNull(partnerId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_DEACTIVATED, "상대방이 탈퇴한 사용자입니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_DEACTIVATED.getCode(),
+                        UserResponseCode.USER_DEACTIVATED.getHttpStatus(),
+                        UserResponseCode.USER_DEACTIVATED.getMessage()
+                ));
 
         String encryptMessage = aesUtil.encrypt(response.getMessage());
 
-        // 메시지 저장
         SignalMessage signalMessage = SignalMessage.builder()
                 .signalRoom(room)
                 .senderUser(user)
@@ -408,25 +545,83 @@ public class ChannelService {
                 .build();
 
         signalMessageRepository.save(signalMessage);
+
+        // 2. 메세지 WebSocket 전송
+        String roomKey = "room-" + roomId;
+        socketIOServer.getRoomOperations(roomKey)
+                        .sendEvent("receive_message", SocketIoMessageResponse.from(signalMessage));
+
+        entityManager.flush();
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncChannelService.notifyMatchingConverted(room);
+                asyncChannelService.sendNewMessageNotifyToPartner(signalMessage, partnerId, false);
+            }
+        });
     }
 
     @Transactional
-    public String channelMatchingStatusUpdate(Long userId, SignalMatchingRequestDTO response, MatchingStatus matchingStatus) {
+    public String channelMatchingStatusUpdate(Long userId, SignalMatchingRequestDto response, MatchingStatus matchingStatus) {
         SignalRoom room = signalRoomRepository.findById(response.getChannelRoomId())
-                .orElseThrow(ChannelNotFoundException::new);
+                .orElseThrow(() -> new BusinessException(
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getCode(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getHttpStatus(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getMessage()
+                ));
 
         int updatedSender = signalRoomRepository.updateSenderMatchingStatus(room.getId(), userId, matchingStatus);
         int updatedReceiver = signalRoomRepository.updateReceiverMatchingStatus(room.getId(), userId, matchingStatus);
 
         if (updatedSender == 0 && updatedReceiver == 0) {
-            throw new ForbiddenChannelException();
+            throw new BusinessException(
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getCode(),
+                    ChannelResponseCode.ALREADY_EXITED_CHANNEL_ROOM.getHttpStatus(),
+                    "사용자가 참여 중인 채팅방 아닙니다."
+            );
         }
 
-        // 매칭 수락/거절 후 현재 관계
+        entityManager.flush();
+
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncChannelService.notifyMatchingResultToPartner(room, userId, matchingStatus);
+                asyncChannelService.createMatchingAlarm(room, userId);
+            }
+        });
+
+
+        /**
+         * 매칭 수락/거절 후 현재 관계 반환
+         */
         if(matchingStatus == MatchingStatus.MATCHED) {
             return signalRoomRepository.findMatchResultByUser(userId, room.getId());
         } else {
-            return ResponseCode.MATCH_REJECTION_SUCCESS;
+            return ChannelResponseCode.MATCH_REJECTION_SUCCESS.getCode();
         }
+    }
+
+
+    @Transactional
+    public void leaveChannelRoom(Long roomId, Long userId) {
+        SignalRoom room = signalRoomRepository.findById(roomId)
+                .orElseThrow(() -> new BusinessException(
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getCode(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getHttpStatus(),
+                        ChannelResponseCode.CHANNEL_NOT_FOUND.getMessage()
+                ));
+
+        if (!userRepository.existsById(userId)) {
+            throw new BusinessException(
+                    UserResponseCode.USER_NOT_FOUND.getCode(),
+                    UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                    "채팅방 나가기 요청한 사용자가 존재하지 않습니다."
+            );
+        }
+
+        room.leaveChannelRoom(userId);
     }
 }

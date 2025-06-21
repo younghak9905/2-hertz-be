@@ -3,7 +3,7 @@ package com.hertz.hertz_be.domain.channel.dto.response;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hertz.hertz_be.domain.channel.entity.SignalMessage;
 import com.hertz.hertz_be.domain.user.entity.User;
-import com.hertz.hertz_be.global.common.AESUtil;
+import com.hertz.hertz_be.global.util.AESUtil;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,16 +24,19 @@ public class ChannelRoomResponseDto {
     private String partnerProfileImage;
     private String partnerNickname;
     private String relationType;
+    private boolean hasPartnerExited;
     private MessagePage messages;
 
     public static ChannelRoomResponseDto of(Long roomId, User partner, String relationType,
-                                         List<MessageDto> messages, Page<SignalMessage> page) {
+                                            boolean hasPartnerExited,
+                                            List<MessageDto> messages, Page<SignalMessage> page) {
         return ChannelRoomResponseDto.builder()
                 .channelRoomId(roomId)
                 .partnerId(partner.getId())
                 .partnerProfileImage(partner.getProfileImageUrl())
                 .partnerNickname(partner.getNickname())
                 .relationType(relationType)
+                .hasPartnerExited(hasPartnerExited)
                 .messages(new MessagePage(messages, page))
                 .build();
     }

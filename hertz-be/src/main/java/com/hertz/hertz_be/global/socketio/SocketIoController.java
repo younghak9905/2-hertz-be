@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 @Component
 @Slf4j
@@ -46,6 +47,7 @@ public class SocketIoController {
             SocketIoMessageResponse socketIoResponse = SocketIoMessageResponse.from(signalMessage, decryptMessage);
 
             server.getRoomOperations("room-" + data.roomId()).sendEvent("receive_message", socketIoResponse);
+
         });
 
         server.addEventListener("mark_as_read", SocketIoMessageMarkRequest.class, (client, data, ackSender) -> {

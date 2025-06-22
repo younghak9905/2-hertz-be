@@ -27,4 +27,5 @@ public record SocketIoMessageResponse(
                 message.getSendAt()
         );
     }
+
 }

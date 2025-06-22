@@ -1,12 +1,13 @@
 package com.hertz.hertz_be.domain.user.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hertz.hertz_be.domain.alarm.entity.AlarmMatching;
 import com.hertz.hertz_be.domain.alarm.entity.AlarmNotification;
-import com.hertz.hertz_be.domain.alarm.entity.AlarmReport;
 import com.hertz.hertz_be.domain.alarm.repository.AlarmMatchingRepository;
 import com.hertz.hertz_be.domain.alarm.repository.AlarmNotificationRepository;
 import com.hertz.hertz_be.domain.alarm.repository.AlarmRepository;
 import com.hertz.hertz_be.domain.alarm.repository.UserAlarmRepository;
+import com.hertz.hertz_be.domain.auth.responsecode.AuthResponseCode;
 import com.hertz.hertz_be.domain.auth.repository.OAuthRedisRepository;
 import com.hertz.hertz_be.domain.auth.repository.RefreshTokenRepository;
 import com.hertz.hertz_be.domain.channel.repository.TuningRepository;
@@ -25,12 +26,15 @@ import com.hertz.hertz_be.domain.user.dto.response.UserInfoResponseDto;
 import com.hertz.hertz_be.domain.user.dto.response.UserProfileDTO;
 import com.hertz.hertz_be.domain.user.entity.User;
 import com.hertz.hertz_be.domain.user.entity.UserOauth;
-import com.hertz.hertz_be.domain.user.exception.UserException;
+import com.hertz.hertz_be.domain.user.responsecode.UserResponseCode;
 import com.hertz.hertz_be.domain.user.repository.UserOauthRepository;
 import com.hertz.hertz_be.domain.user.repository.UserRepository;
+import com.hertz.hertz_be.domain.tuningreport.entity.TuningReport;
+import com.hertz.hertz_be.domain.tuningreport.entity.TuningReportUserReaction;
 import com.hertz.hertz_be.global.auth.token.JwtTokenProvider;
-import com.hertz.hertz_be.global.common.ResponseCode;
+import com.hertz.hertz_be.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -41,6 +45,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -74,17 +79,22 @@ public class UserService {
     public UserInfoResponseDto createUser(UserInfoRequestDto userInfoRequestDto) {
         String redisValue = oauthRedisRepository.get(userInfoRequestDto.getProviderId());
         if (redisValue == null) {
-            throw new UserException(ResponseCode.REFRESH_TOKEN_INVALID, "Refresh Token이 올바르지 않습니다.");
+            throw new BusinessException(
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getCode(),
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getHttpStatus(),
+                    AuthResponseCode.REFRESH_TOKEN_INVALID.getMessage());
         }
 
         if (userOauthRepository.existsByProviderIdAndProvider(userInfoRequestDto.getProviderId(), userInfoRequestDto.getProvider())) {
-            throw new UserException(ResponseCode.DUPLICATE_USER, "이미 등록된 사용자입니다.");
+            throw new BusinessException(
+                    UserResponseCode.DUPLICATE_USER.getCode(),
+                    UserResponseCode.DUPLICATE_USER.getHttpStatus(),
+                    UserResponseCode.DUPLICATE_USER.getMessage());
         }
 
         String refreshTokenValue = redisValue.split(",")[0];
         LocalDateTime refreshTokenExpiredAt = LocalDateTime.parse(redisValue.split(",")[1]);
 
-        // 현재 시간과 refreshToken의 만료 일시까지를 계산 (cookie 만료 시간 설정 시 만료일자를 정할 수 없기 때문)
         long secondsUntilExpiry = Duration.between(LocalDateTime.now(), refreshTokenExpiredAt).getSeconds();
         int maxAge = (int) Math.max(0, secondsUntilExpiry);
 
@@ -138,14 +148,20 @@ public class UserService {
 
         while (true) {
             if (System.nanoTime() - startTime > TIMEOUT_NANOS) {
-                throw new UserException(ResponseCode.NICKNAME_GENERATION_TIMEOUT, "5초 내에 중복되지 않은 닉네임을 찾지 못했습니다.");
+                throw new BusinessException(
+                        UserResponseCode.NICKNAME_GENERATION_TIMEOUT.getCode(),
+                        UserResponseCode.NICKNAME_GENERATION_TIMEOUT.getHttpStatus(),
+                        UserResponseCode.NICKNAME_GENERATION_TIMEOUT.getMessage());
             }
 
             String nickname;
             try {
                 nickname = callExternalNicknameApi();
             } catch (Exception e) {
-                throw new UserException(ResponseCode.NICKNAME_API_FAILED, "닉네임 생성 API 호출 실패");
+                throw new BusinessException(
+                        UserResponseCode.NICKNAME_API_FAILED.getCode(),
+                        UserResponseCode.NICKNAME_API_FAILED.getHttpStatus(),
+                        UserResponseCode.NICKNAME_API_FAILED.getMessage());
             }
 
             if (!userRepository.existsByNickname(nickname)) {
@@ -159,13 +175,19 @@ public class UserService {
         if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
             return response.getBody().trim();
         }
-        throw new UserException(ResponseCode.NICKNAME_API_FAILED, "닉네임 생성 API 응답 실패");
+        throw new BusinessException(
+                UserResponseCode.NICKNAME_API_FAILED.getCode(),
+                UserResponseCode.NICKNAME_API_FAILED.getHttpStatus(),
+                UserResponseCode.NICKNAME_API_FAILED.getMessage());
     }
 
 
     public UserProfileDTO getUserProfile(Long targetUserId, Long userId) {
         User targetUser = userRepository.findByIdAndDeletedAtIsNull(targetUserId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_DEACTIVATED, "상대방이 탈퇴한 사용자입니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_DEACTIVATED.getCode(),
+                        UserResponseCode.USER_DEACTIVATED.getHttpStatus(),
+                        UserResponseCode.USER_DEACTIVATED.getMessage()));
 
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -210,38 +232,65 @@ public class UserService {
     @Transactional
     public void deleteUserById(Long userId) {
         User user = userRepository.findByIdWithSentSignalRooms(userId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_NOT_FOUND, "사용자가 존재하지 않습니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        UserResponseCode.USER_NOT_FOUND.getMessage()));
 
         List<SignalRoom> rooms = signalRoomRepository.findAllBySenderUserIdOrReceiverUserId(userId, userId);
+
+        // 1. 관련된 TuningReport 먼저 조회
+        List<TuningReport> tuningReports = tuningReportRepository.findAllBySignalRoomIn(rooms);
+
+        // 2. TuningReportUserReaction → reportId 기준으로 먼저 삭제
+        for (TuningReport tuningReport : tuningReports) {
+            List<TuningReportUserReaction> reactions = tuningReportUserReactionRepository.findAllByReportId(tuningReport.getId());
+            tuningReportUserReactionRepository.deleteAll(reactions);
+        }
+
+        // 3. TuningReport 삭제
+        tuningReportRepository.deleteAll(tuningReports);
+
+        // 4. SignalMessage 삭제
         for (SignalRoom room : rooms) {
             signalMessageRepository.deleteAllBySignalRoom(room);
         }
-        signalRoomRepository.deleteAll(rooms);
 
+        // 5. AlarmNotification 처리
+        List<AlarmNotification> notifications = alarmNotificationRepository.findAllByWriter(user);
+        notifications.forEach(AlarmNotification::removeWriter);
+
+        // 6. AlarmMatching 처리
+        List<AlarmMatching> matchingByUser = alarmMatchingRepository.findAllByPartner(user);
+        matchingByUser.forEach(AlarmMatching::removePartner);
+
+        List<AlarmMatching> matchingByRoom = alarmMatchingRepository.findAllBySignalRoomIn(rooms);
+        matchingByRoom.forEach(AlarmMatching::removeSignalRoom);
+
+        // 7. SignalRoom 삭제 (version 필드 있음 → 영속화해서 삭제)
+        List<Long> roomIds = rooms.stream().map(SignalRoom::getId).toList();
+        List<SignalRoom> managedRooms = signalRoomRepository.findAllById(roomIds);
+        signalRoomRepository.deleteAll(managedRooms);
+
+        // 8. 기타 관련 삭제
         userInterestsRepository.deleteAllByUser(user);
-
         tuningResultRepository.deleteAllByMatchedUser(user);
 
-        List<AlarmNotification> notifications = alarmNotificationRepository.findAllByWriter(user);
-        notifications.forEach(n -> n.removeWriter());
-        alarmNotificationRepository.saveAll(notifications);
-
+        // 9. 마지막으로 user 삭제
         userRepository.delete(user);
     }
 
     @Transactional
     public void deleteAllUsers() {
         signalMessageRepository.deleteAll();
-        signalRoomRepository.deleteAll();
+        tuningReportUserReactionRepository.deleteAll();
+        tuningReportRepository.deleteAll();
         userInterestsRepository.deleteAll();
         tuningResultRepository.deleteAll();
         tuningRepository.deleteAll();
         userAlarmRepository.deleteAll();
-        alarmMatchingRepository.deleteAll();
-        alarmNotificationRepository.deleteAll();
         alarmRepository.deleteAll();
-        tuningReportUserReactionRepository.deleteAll();
-        tuningReportRepository.deleteAll();
+        signalRoomRepository.deleteAll();
         userRepository.deleteAll();
     }
 }

@@ -7,10 +7,10 @@ import com.hertz.hertz_be.domain.channel.entity.SignalRoom;
 import com.hertz.hertz_be.domain.channel.entity.enums.MatchingStatus;
 import com.hertz.hertz_be.domain.channel.repository.SignalMessageRepository;
 import com.hertz.hertz_be.domain.user.entity.User;
-import com.hertz.hertz_be.domain.user.exception.UserException;
+import com.hertz.hertz_be.domain.user.responsecode.UserResponseCode;
+import com.hertz.hertz_be.global.common.NewResponseCode;
 import com.hertz.hertz_be.domain.user.repository.UserRepository;
-import com.hertz.hertz_be.global.common.ResponseCode;
-import com.hertz.hertz_be.global.exception.InternalServerErrorException;
+import com.hertz.hertz_be.global.exception.BusinessException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +24,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,9 +31,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AsyncChannelService {
+
     @Value("${matching.convert.delay-minutes}")
     private long matchingConvertDelayMinutes;
     private final long ONE_MESSAGE = 1L;
+
+    //Todo: 2차 압데이트 전에 장확한 날짜로 수정
+    private static final LocalDateTime VERSION_2_UPDATE_DATE = LocalDateTime.of(2025, 6, 20, 12, 0);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -50,7 +53,8 @@ public class AsyncChannelService {
             return;
         }
 
-        List<UserMessageCountDto> counts = signalMessageRepository.countMessagesBySenderInRoom(room.getId());
+        List<UserMessageCountDto> counts = signalMessageRepository
+                .countMessagesBySenderInRoomAfter(room.getId(), VERSION_2_UPDATE_DATE);
 
         Map<Long, Long> countMap = counts.stream()
                 .collect(Collectors.toMap(
@@ -70,7 +74,7 @@ public class AsyncChannelService {
     private boolean shouldNotifyMatchingConverted(SignalRoom room, Map<Long, Long> countMap) {
         Long receiverId = room.getReceiverUser().getId();
         Long receiverMessageCount = countMap.getOrDefault(receiverId, 0L);
-        return receiverMessageCount == ONE_MESSAGE; // Todo: 나중에 v2 배포할 때, "if (receiverMessageCount >= ONE_MESSAGE)" 로 일시적으로 수정
+        return receiverMessageCount >= ONE_MESSAGE;
     }
 
     @Async
@@ -84,7 +88,7 @@ public class AsyncChannelService {
         Long receiverId = room.getReceiverUser().getId();
 
         List<SignalMessage> messages = signalMessageRepository
-                .findBySignalRoomIdAndSenderUserIdOrderBySendAtAsc(roomId, receiverId);
+                .findBySignalRoomIdAndSenderUserIdAndSendAtAfterOrderBySendAtAsc(roomId, receiverId, VERSION_2_UPDATE_DATE);
 
         if (messages.isEmpty()) return;
 
@@ -101,7 +105,11 @@ public class AsyncChannelService {
     public void sendNewMessageNotifyToPartner(SignalMessage signalMessage, Long partnerId, boolean isSignal) {
         // signalMessage는 detached 상태 → DB에서 최신 상태 조회
         SignalMessage latestMessageForm = signalMessageRepository.findById(signalMessage.getId())
-                .orElseThrow(InternalServerErrorException::new);
+                .orElseThrow(() -> new BusinessException(
+                        NewResponseCode.INTERNAL_SERVER_ERROR.getCode(),
+                        NewResponseCode.INTERNAL_SERVER_ERROR.getHttpStatus(),
+                        NewResponseCode.INTERNAL_SERVER_ERROR.getMessage()
+                ));
 
         if (!latestMessageForm.getIsRead()) {
             sseChannelService.updatePartnerChannelList(latestMessageForm, partnerId);
@@ -127,7 +135,11 @@ public class AsyncChannelService {
         SignalRoom latestRoomForm = entityManager.find(SignalRoom.class, room.getId());
         User partner = latestRoomForm.getPartnerUser(userId);
         User user = userRepository.findByIdWithSentSignalRooms(userId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_NOT_FOUND, "사용자가 존재하지 않습니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        UserResponseCode.USER_NOT_FOUND.getMessage()
+                ));
 
         boolean isSender = Objects.equals(userId, latestRoomForm.getSenderUser().getId());
         MatchingStatus partnerStatus = isSender ? latestRoomForm.getReceiverMatchingStatus() : latestRoomForm.getSenderMatchingStatus();
@@ -145,7 +157,11 @@ public class AsyncChannelService {
         SignalRoom latestRoomForm = entityManager.find(SignalRoom.class, room.getId());
         User partner = latestRoomForm.getPartnerUser(userId);
         User user = userRepository.findByIdWithSentSignalRooms(userId)
-                .orElseThrow(() -> new UserException(ResponseCode.USER_NOT_FOUND, "사용자가 존재하지 않습니다."));
+                .orElseThrow(() -> new BusinessException(
+                        UserResponseCode.USER_NOT_FOUND.getCode(),
+                        UserResponseCode.USER_NOT_FOUND.getHttpStatus(),
+                        UserResponseCode.USER_NOT_FOUND.getMessage()
+                ));
 
         boolean isSender = Objects.equals(userId, latestRoomForm.getSenderUser().getId());
         MatchingStatus partnerMatchingStatus = isSender ? latestRoomForm.getReceiverMatchingStatus() : latestRoomForm.getSenderMatchingStatus();

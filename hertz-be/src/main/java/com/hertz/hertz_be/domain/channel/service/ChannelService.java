@@ -503,9 +503,16 @@ public class ChannelService {
         return ChannelRoomResponseDto.of(roomId, partner, room.getRelationType(), isPartnerExited, messages, messagePage);
     }
 
+    public void sendChannelMessage(Long roomId, Long userId, SendSignalRequestDto dto) {
+        // 1. 트랜잭션 안에서 DB 저장
+        SignalMessage saved = saveMessage(roomId, userId, dto);
+
+        // 2. 트랜잭션 바깥에서 WebSocket 전송 및 알림
+        broadcastAndNotify(saved, roomId, userId);
+    }
+
     @Transactional
-    public void sendChannelMessage(Long roomId, Long userId, SendSignalRequestDto response) {
-        // 1. 메세지 DB 저장
+    public SignalMessage saveMessage(Long roomId, Long userId, SendSignalRequestDto dto) {
         SignalRoom room = signalRoomRepository.findById(roomId)
                 .orElseThrow(() -> new BusinessException(
                         ChannelResponseCode.CHANNEL_NOT_FOUND.getCode(),
@@ -536,7 +543,7 @@ public class ChannelService {
                         UserResponseCode.USER_DEACTIVATED.getMessage()
                 ));
 
-        String encryptMessage = aesUtil.encrypt(response.getMessage());
+        String encryptMessage = aesUtil.encrypt(dto.getMessage());
 
         SignalMessage signalMessage = SignalMessage.builder()
                 .signalRoom(room)
@@ -544,22 +551,22 @@ public class ChannelService {
                 .message(encryptMessage)
                 .build();
 
-        signalMessageRepository.save(signalMessage);
+        return signalMessageRepository.save(signalMessage);
+    }
 
-        // 2. 메세지 WebSocket 전송
+    // WebSocket + 알림 전송
+    public void broadcastAndNotify(SignalMessage message, Long roomId, Long senderId) {
         String roomKey = "room-" + roomId;
         socketIOServer.getRoomOperations(roomKey)
-                        .sendEvent("receive_message", SocketIoMessageResponse.from(signalMessage));
+                .sendEvent("receive_message", SocketIoMessageResponse.from(message));
 
-        entityManager.flush();
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                asyncChannelService.notifyMatchingConverted(room);
-                asyncChannelService.sendNewMessageNotifyToPartner(signalMessage, partnerId, false);
-            }
-        });
+        // 알림 비동기 호출
+        asyncChannelService.notifyMatchingConverted(message.getSignalRoom());
+        asyncChannelService.sendNewMessageNotifyToPartner(
+                message,
+                message.getSignalRoom().getPartnerUser(senderId).getId(),
+                false
+        );
     }
 
     @Transactional

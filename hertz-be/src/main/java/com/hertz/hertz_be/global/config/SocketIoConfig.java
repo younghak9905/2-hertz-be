@@ -38,7 +38,7 @@ public class SocketIoConfig {
         config.setJsonSupport(new CustomJsonSupport());
 
         SocketIOServer server = new SocketIOServer(config);
-        server.start();
+        // server.start();
 
         return server;
 

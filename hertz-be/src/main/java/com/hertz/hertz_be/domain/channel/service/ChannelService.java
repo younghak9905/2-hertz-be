@@ -547,9 +547,9 @@ public class ChannelService {
         signalMessageRepository.save(signalMessage);
 
         // 2. 메세지 WebSocket 전송
-        String roomKey = "room-" + roomId;
-        socketIOServer.getRoomOperations(roomKey)
-                        .sendEvent("receive_message", SocketIoMessageResponse.from(signalMessage));
+//        String roomKey = "room-" + roomId;
+//        socketIOServer.getRoomOperations(roomKey)
+//                        .sendEvent("receive_message", SocketIoMessageResponse.from(signalMessage));
 
         entityManager.flush();
 

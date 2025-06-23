@@ -11,7 +11,7 @@ public record AiSignalRoomDto(
 ) {
     public static AiSignalRoomDto from(SignalRoom room) {
         return new AiSignalRoomDto(
-                room.getId
+                room.getId(),
                 room.getCategory()
         );
     }
